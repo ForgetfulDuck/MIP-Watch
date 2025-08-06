@@ -15,8 +15,11 @@ A low-power fitness tracker based on the STM32.
    - STM32CubeIDE
    - ST-Link
 
+**Schematic**:
 ![Schematic](/img/Schematic.png)
-
+___
+**2-Layer PCB**:
 ![PCB](/img/PCB.png)
-
+___
+**DFM (Through JLCPCB)**:
 ![DFM](/img/DFM.png)
