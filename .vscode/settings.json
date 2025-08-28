@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.c_bak": "c",
+        "max31331_reg.h": "c"
+    }
+}

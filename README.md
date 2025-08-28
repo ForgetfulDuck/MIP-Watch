@@ -2,24 +2,29 @@
 A low-power fitness tracker based on the STM32.
 
 ### Hardware Components
-| Part      | Description |
-| :-------  | :-------: |
-| STM32U0   | Arm Cortex-M0+ MCU  |
-| LIS2DS12   | Accelerometer with built-in pedometer  |
-| MAX31331   | RTC  |
-| TN0104ANVAANN   | MIP display  |
-| LIR2450   | Coin Cell  (4.2-3.6V, 120mAh )  |
+| Description | Part |
+| :------- | -------:|
+| Arm Cortex-M0+ MCU  | STM32U0 |
+| Accelerometer with built-in pedometer  | LSM6DSR |
+| RTC  | MAX31331 |
+| MIP display  | TN0104ANVAANN |
+| Coin Cell  (4.2-3.6V, 120mAh )  | LIR2450 |
 
 ### Software + Tools
    - KiCAD
    - STM32CubeIDE
-   - ST-Link
+   - ST-Link V2
 
 **Schematic**:
-![Schematic](/img/Schematic.png)
+![Schematic](/img/Schematic_v2.png)
 ___
 **2-Layer PCB**:
-![PCB](/img/PCB.png)
+
+| Plane      | Image |
+| :-------:  | :-------: |
+|Signal| ![PCB](/img/PCB_sig_v2.png)|
+|GND| ![PCB](/img/PCB_gnd_v2.png)|
+|Power| ![PCB](/img/PCB_pwr_v2.png)|
 ___
 **DFM (Through JLCPCB)**:
-![DFM](/img/DFM.png)
+![DFM](/img/DFM_v2.png)
