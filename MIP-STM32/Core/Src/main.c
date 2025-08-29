@@ -106,12 +106,12 @@ volatile uint8_t StepRXcomp = 0;
 uint8_t s_step_rx_buf[2];
 uint8_t s_tap_rx_buf[1];
 /* Tracked values */
-volatile uint16_t g_step_count = 0;
-volatile uint16_t g_num_taps = 0;
+static volatile uint16_t g_step_count = 0;
+static volatile uint16_t g_num_taps = 0;
 
 /* ============== RTC VARIABLES ============== */
-uint8_t s_rtc_rx_buf[8];
-uint8_t g_RTC_time[8];
+static uint8_t s_rtc_rx_buf[8];
+static uint8_t g_RTC_time[8];
 
 /* ============== Interrupt Setup ============== */
 #define IMU_INT1_Pin            GPIO_PIN_1
@@ -127,8 +127,8 @@ uint8_t g_RTC_time[8];
 #define I2C3_SDA_PIN 			GPIO_PIN_6
 #define I2C3_PORT 				GPIOA
 
-uint8_t inStopMode  = 0;
-uint8_t inSleepMode = 0;
+static uint8_t inStopMode  = 0;
+static uint8_t inSleepMode = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -235,7 +235,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    HAL_Delay(1);
+//    HAL_Delay(1);
 
     // Parse data from complete jobs
     processJob();
@@ -244,24 +244,22 @@ int main(void)
     if(!DMArunning) {
       if (dequeueJob(&jobQueue, &job)) {
         startJob(job);
-      } 
-	//   else {// else job queue is empty, go back to STOP mode while we wait for next interrupt
-	// 	inStopMode = 1;
-	// 	HAL_SuspendTick();
-	// 	HAL_PWREx_EnterSTOP1Mode(PWR_SLEEPENTRY_WFI);
+      } else {// else job queue is empty, go back to STOP mode while we wait for next interrupt
+	 	inStopMode = 1;
+	 	HAL_SuspendTick();
+	 	HAL_PWREx_EnterSTOP2Mode(PWR_SLEEPENTRY_WFI);
 
-	// 	HAL_ResumeTick();
-	// 	inStopMode = 0;
-	//   }
-    } 
-	// else {// Waiting for DMA to finish, go back to SLEEP mode while we wait for I2C callback
-	// 	inSleepMode = 1;
-	// 	HAL_SuspendTick();
-	// 	HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
+	 	HAL_ResumeTick();
+	 	inStopMode = 0;
+	   }
+    } else {// Waiting for DMA to finish, go back to SLEEP mode while we wait for I2C callback
+	 	inSleepMode = 1;
+	 	HAL_SuspendTick();
+	 	HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
 
-	// 	HAL_ResumeTick();
-	// 	inSleepMode = 0;
-	// }
+	 	HAL_ResumeTick();
+	 	inSleepMode = 0;
+	 }
   }
   /* USER CODE END 3 */
 }
@@ -481,6 +479,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(IMU_INT2_GPIO_Port, &GPIO_InitStruct);
 
+//   /*Configure GPIO pin : IMU_INT1_Float_Pin */
+//   GPIO_InitStruct.Pin = IMU_INT1_Float_Pin;
+//   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+//   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+//   HAL_GPIO_Init(IMU_INT1_Float_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : RTC_INT_Pin */
   GPIO_InitStruct.Pin = RTC_INT_Pin;
@@ -664,33 +667,39 @@ static void processJob(void) {
 	} else if (StepRXcomp) { // Update Step Count
 		g_step_count = (uint16_t)s_step_rx_buf[1] << 8 | (uint16_t)s_step_rx_buf[0];
 		StepRXcomp = 0;
+		
 	}
 }
 
 /* ============== I2C Device Initialization ============== */
 static void clear_I2C_bus(void) {
 	GPIO_InitTypeDef GPIO_InitStruct = {0};
-	/* Configure SCL and SDA as Open-Drain GPIO outputs (we assume external pull-ups present) */
+
+    // Configure SCL/SDA as open-drain outputs
     GPIO_InitStruct.Pin = I2C3_SCL_PIN | I2C3_SDA_PIN;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
     HAL_GPIO_Init(I2C3_PORT, &GPIO_InitStruct);
 
-	/* Make sure SDA & SCL released high (external pull-ups will pull them high) */
-    HAL_GPIO_WritePin(I2C3_PORT, I2C3_SDA_PIN, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(I2C3_PORT, I2C3_SCL_PIN, GPIO_PIN_SET);
+    // Release both lines
+    HAL_GPIO_WritePin(I2C3_PORT, I2C3_SDA_PIN | I2C3_SCL_PIN, GPIO_PIN_SET);
     HAL_Delay(1);
 
-	for (int i = 0; i < 9; i++)
-	{
-		HAL_GPIO_WritePin(I2C3_PORT, I2C3_SCL_PIN, GPIO_PIN_RESET);
-		HAL_Delay(10);
-		HAL_GPIO_WritePin(I2C3_PORT, I2C3_SCL_PIN, GPIO_PIN_SET);
-		HAL_Delay(10);
-	}
+    // Toggle SCL while SDA is low
+    for (int i = 0; i < 9 && HAL_GPIO_ReadPin(I2C3_PORT, I2C3_SDA_PIN) == GPIO_PIN_RESET; i++) {
+        HAL_GPIO_WritePin(I2C3_PORT, I2C3_SCL_PIN, GPIO_PIN_SET);
+        HAL_Delay(1); // 1 ms, can reduce to 5-10 us
+        HAL_GPIO_WritePin(I2C3_PORT, I2C3_SCL_PIN, GPIO_PIN_RESET);
+        HAL_Delay(1);
+    }
 
-	HAL_GPIO_DeInit(I2C3_PORT, I2C3_SCL_PIN | I2C3_SDA_PIN); // Return pins to default state
+    // Generate STOP condition
+    HAL_GPIO_WritePin(I2C3_PORT, I2C3_SDA_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(I2C3_PORT, I2C3_SCL_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(I2C3_PORT, I2C3_SDA_PIN, GPIO_PIN_SET);
+
+    HAL_GPIO_DeInit(I2C3_PORT, I2C3_SCL_PIN | I2C3_SDA_PIN); // Return pins to default state
 }
 
 static void reconfigure_interupts(int interrupt_en) {

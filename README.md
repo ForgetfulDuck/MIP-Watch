@@ -4,10 +4,10 @@ ___
 ### Hardware Components
 | Description | Part |
 | :------- | -------:|
-| Arm Cortex-M0+ MCU  | STM32U0 |
-| Accelerometer with built-in pedometer  | LSM6DSR |
-| RTC  | MAX31331 |
-| MIP display  | TN0104ANVAANN |
+| Arm Cortex-M0+ MCU  | [STM32U0](/Datasheets/stm32u031f4.pdf) |
+| Accelerometer with built-in pedometer  | [LSM6DSR](/Datasheets/LSM6DSR.pdf) |
+| RTC  | [MAX31331](/Datasheets/MAX31331.pdf) |
+| MIP display  | [TN0104ANVAANN](/Datasheets/TN0104ANVAANN-GN00_Spec.pdf) |
 | Coin Cell  (4.2-3.6V, 120mAh )  | LIR2450 |
 
 ### Software + Tools
@@ -18,13 +18,13 @@ ___
 ___
 ### PCB Design
 **4-Layer Stackup: Signal - GND - Power - Signal**:
-|  | Image | Goal |
+|  | Image | Contents |
 | :-------:  | :-------: | :-------: |
-|Schematic| ![Schematic](/img/Schematic_v2.png)| |
+|Schematic| ![Schematic](/img/Schematic_v2.1.png)|  |
 |Signal| ![PCB](/img/PCB_sig_v2.png)| Short traces, Decoupling caps, Copper pours, Test pads |
-|GND| ![PCB](/img/PCB_gnd_v2.png)| Continuous ground plane for signal integrity |
-|Power| ![PCB](/img/PCB_pwr_v2.png)| Clean power distribution with minimal voltage drop |
-|DFM | ![DFM](/img/DFM_v2.png)| JLCPCB-compliant design with DFT considerations (test points, [add more examples]) |
+|GND| ![PCB](/img/PCB_gnd_v2.png)| A continuous ground plane to maximize signal integrity and minimize EMI |
+|Power| ![PCB](/img/PCB_pwr_v2.png)|  A clean power plane for efficient power distribution with minimal voltage drop |
+|DFM | ![DFM](/img/DFM_v2.png)| Designed around JLCPCB's design constraints, with design-for-testability (DFT) considerations, including test points and adequate component spacing. |
 ___
 
 ### System Architecture
@@ -78,16 +78,16 @@ flowchart TD
 ```
 ___
 ### Key Features
-- Interrupt-driven firmware with simple job queue to avoid polling.
-   - IMU hardware handles step/tap detection → only wakes MCU when needed.
-   - RTC generates periodic interrupts for timekeeping & display refresh.
-- Custom MAX31331 RTC driver integrates with the HAL I²C layer, providing:
+- **Interrupt-driven firmware:** Interrupts from sensors queue jobs, preventing the need to continuously poll for updated data.
+   - The IMU handles step/tap detection and only wakes the MCU when a new event occurs.
+   - The RTC generates periodic interrupts for timekeeping and display refreshes.
+- **Custom RTC Driver:** Wrote a platform-independent driver for the MAX31331 that provides:
    - Time/date get + set functions
    - Timer configuration + clock calibration
    - Interrupt setup
-- DMA offloads I²C transfers while CPU remains in SLEEP.
-- STOP mode for idle + SLEEP mode during DMA → maximum battery efficiency.
-- MIP display consumes energy only when updating content.
+- **Direct Memory Access (DMA):** I²C data from the sensors is transferred in the background, while the CPU is in SLEEP mode.
+- **Dynamic Power Management:** The firmware enters STOP mode when idle and SLEEP mode during DMA operations, waking only to process data from the sensors.
+- **Memory-in-Pixel (MIP) display:** The display only consumes energy when the content is updated.
 
 ### Build & Flash
 - Open project in STM32CubeIDE.
@@ -107,7 +107,7 @@ ___
 ___
 ### Roadmap
 - **User Input:** Add tactile buttons for UI interaction.
-- **Power System:** Integrated coin-cell holder & optional charging support.
-- **Peripheral Control:** Dedicated pins on the MCU to enable/disable peripherals.
-- **UART:** Add UART RX/TX breakout for logging & debug.
+- **Power System:** Integrate a coin-cell holder with a BMS for charging support.
+- **Peripheral Control:** Dedicate pins on the MCU to enable/disable sensors for proper power sequencing.
+- **UART:** Add UART RX/TX headers for logging & debug.
 - **Future Plans:** BLE, heart-rate sensor.
