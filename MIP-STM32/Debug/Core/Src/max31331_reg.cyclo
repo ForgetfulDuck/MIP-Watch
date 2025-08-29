@@ -1,0 +1,16 @@
+../Core/Src/max31331_reg.c:13:9:max31331_read_reg	4
+../Core/Src/max31331_reg.c:29:9:max31331_write_reg	4
+../Core/Src/max31331_reg.c:37:9:bin2dec_bcd	1
+../Core/Src/max31331_reg.c:40:9:dec2bin_bcd	1
+../Core/Src/max31331_reg.c:45:5:max31331_get_status	3
+../Core/Src/max31331_reg.c:50:5:max31331_reset_rtc	3
+../Core/Src/max31331_reg.c:63:5:max31331_set_time	5
+../Core/Src/max31331_reg.c:81:5:max31331_get_time	11
+../Core/Src/max31331_reg.c:116:5:max31331_set_date	9
+../Core/Src/max31331_reg.c:131:5:max31331_get_date	7
+../Core/Src/max31331_reg.c:152:5:max31331_set_clko	3
+../Core/Src/max31331_reg.c:162:5:max31331_calibrate_rtc	1
+../Core/Src/max31331_reg.c:177:5:max31331_set_timer_config	5
+../Core/Src/max31331_reg.c:190:5:max31331_set_timer_init	2
+../Core/Src/max31331_reg.c:195:5:max31331_set_int_en	9
+../Core/Src/max31331_reg.c:211:5:max31331_get_int_en	2
