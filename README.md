@@ -108,6 +108,6 @@ ___
 ### Roadmap
 - **User Input:** Add tactile buttons for UI interaction.
 - **Power System:** Integrated coin-cell holder & optional charging support.
-- **Peripheral Control:** Enable pins on STM32 for selective peripheral shutdown.
+- **Peripheral Control:** Dedicated pins on the MCU to enable/disable peripherals.
 - **UART:** Add UART RX/TX breakout for logging & debug.
 - **Future Plans:** BLE, heart-rate sensor.
