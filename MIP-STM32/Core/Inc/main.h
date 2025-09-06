@@ -57,8 +57,6 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define NRST_Pin GPIO_PIN_2
-#define NRST_GPIO_Port GPIOF
 #define IMU_INT2_Pin GPIO_PIN_0
 #define IMU_INT2_GPIO_Port GPIOA
 #define IMU_INT2_EXTI_IRQn EXTI0_1_IRQn
@@ -97,12 +95,8 @@ void Error_Handler(void);
 #define DBG_SWCLK_GPIO_Port GPIOA
 #define DEN_Pin GPIO_PIN_15
 #define DEN_GPIO_Port GPIOA
-#define DBG_SWO_Pin GPIO_PIN_3
-#define DBG_SWO_GPIO_Port GPIOB
 #define ENBG_Pin GPIO_PIN_4
 #define ENBG_GPIO_Port GPIOB
-#define BOOT0_Pin GPIO_PIN_3
-#define BOOT0_GPIO_Port GPIOF
 
 /* USER CODE BEGIN Private defines */
 

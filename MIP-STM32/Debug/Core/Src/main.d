@@ -27,8 +27,6 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_i2c_ex.h \
  ../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_pwr.h \
  ../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_pwr_ex.h \
- ../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_rtc.h \
- ../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_rtc_ex.h \
  ../Core/Inc/lsm6dsr_reg.h ../Core/Inc/max31331_reg.h
 ../Core/Inc/main.h:
 ../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal.h:
@@ -59,7 +57,5 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_i2c_ex.h:
 ../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_pwr.h:
 ../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_pwr_ex.h:
-../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_rtc.h:
-../Drivers/STM32U0xx_HAL_Driver/Inc/stm32u0xx_hal_rtc_ex.h:
 ../Core/Inc/lsm6dsr_reg.h:
 ../Core/Inc/max31331_reg.h:

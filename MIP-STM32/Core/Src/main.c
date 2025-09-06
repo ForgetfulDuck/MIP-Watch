@@ -47,8 +47,6 @@
 I2C_HandleTypeDef hi2c3;
 DMA_HandleTypeDef hdma_i2c3_rx;
 
-RTC_HandleTypeDef hrtc;
-
 /* USER CODE BEGIN PV */
 /* ============== I2C Variables ============== */
 typedef struct {
@@ -129,6 +127,7 @@ static uint8_t g_RTC_time[8];
 
 static uint8_t inStopMode  = 0;
 static uint8_t inSleepMode = 0;
+static uint8_t inLPRunMode = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -136,7 +135,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_I2C3_Init(void);
-static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
 /* ============== JOB QUEUE FUNCTIONS ============== */
 void initJobQueue(volatile JobQueue *q);
@@ -152,7 +150,10 @@ int job = 5;
 static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp, uint16_t len);
 static int32_t platform_read (void *handle, uint8_t reg, uint8_t *bufp, uint16_t len);
 static void clear_I2C_bus(void);
-static void reconfigure_interupts(int interrupt_en);
+
+/* ============== LP-Run modes ============== */
+void Enter_LowPowerRunMode(void);
+void Exit_LowPowerRunMode(void);
 
 /* ============== I2C DEVICE INIT FUNCTIONS ============== */
 static void LSM6DSR_Init(void);
@@ -191,21 +192,19 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_I2C3_Init();
-  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
 
-  DMArunning 	= 0;
   tapsInQueue = 0;
   stepsInQueue = 0;
   timeInQueue = 0;
   
+  DMArunning 	= 0;
   TickDMAflag 	= 0;
   TickRXcomp 	= 0;
 
@@ -225,6 +224,9 @@ int main(void)
 
   initJobQueue(&jobQueue);
 
+  HAL_Delay(1000); // Prevent immediate stop/sleep mode entry
+  
+  Enter_LowPowerRunMode(); // Sets SysClk Source to MSI @ 1MHz
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -242,15 +244,15 @@ int main(void)
     
     // If DMA is free and job queue !empty, start job
     if(!DMArunning) {
-      if (dequeueJob(&jobQueue, &job)) {
-        startJob(job);
-      } else {// else job queue is empty, go back to STOP mode while we wait for next interrupt
-	 	inStopMode = 1;
-	 	HAL_SuspendTick();
-	 	HAL_PWREx_EnterSTOP2Mode(PWR_SLEEPENTRY_WFI);
+    	if (dequeueJob(&jobQueue, &job)) { // If job in queue, start it
+    		startJob(job);
+    	} else {// else job queue is empty, go back to STOP mode while we wait for next interrupt
+    		inStopMode = 1;
+    		HAL_SuspendTick();
+    		HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
 
-	 	HAL_ResumeTick();
-	 	inStopMode = 0;
+    		HAL_ResumeTick();
+    		inStopMode = 0;
 	   }
     } else {// Waiting for DMA to finish, go back to SLEEP mode while we wait for I2C callback
 	 	inSleepMode = 1;
@@ -280,12 +282,9 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI
-                              |RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -304,7 +303,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  HAL_RCC_MCOConfig(RCC_MCO2, RCC_MCO2SOURCE_HSE, RCC_MCO2DIV_32);
 }
 
 /**
@@ -322,7 +320,7 @@ static void MX_I2C3_Init(void)
 
   /* USER CODE END I2C3_Init 1 */
   hi2c3.Instance = I2C3;
-  hi2c3.Init.Timing = 0x00303D5B;
+  hi2c3.Init.Timing = 0x0010061A;
   hi2c3.Init.OwnAddress1 = 0;
   hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -354,72 +352,6 @@ static void MX_I2C3_Init(void)
 }
 
 /**
-  * @brief RTC Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_RTC_Init(void)
-{
-
-  /* USER CODE BEGIN RTC_Init 0 */
-
-  /* USER CODE END RTC_Init 0 */
-
-  RTC_TimeTypeDef sTime = {0};
-  RTC_DateTypeDef sDate = {0};
-
-  /* USER CODE BEGIN RTC_Init 1 */
-
-  /* USER CODE END RTC_Init 1 */
-
-  /** Initialize RTC Only
-  */
-  hrtc.Instance = RTC;
-  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
-  hrtc.Init.AsynchPrediv = 127;
-  hrtc.Init.SynchPrediv = 255;
-  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
-  hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
-  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
-  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
-  hrtc.Init.OutPutPullUp = RTC_OUTPUT_PULLUP_NONE;
-  hrtc.Init.BinMode = RTC_BINARY_NONE;
-  if (HAL_RTC_Init(&hrtc) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /* USER CODE BEGIN Check_RTC_BKUP */
-
-  /* USER CODE END Check_RTC_BKUP */
-
-  /** Initialize RTC and set the Time and Date
-  */
-  sTime.Hours = 0x0;
-  sTime.Minutes = 0x0;
-  sTime.Seconds = 0x0;
-  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
-  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sDate.WeekDay = RTC_WEEKDAY_MONDAY;
-  sDate.Month = RTC_MONTH_JANUARY;
-  sDate.Date = 0x1;
-  sDate.Year = 0x0;
-
-  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN RTC_Init 2 */
-
-  /* USER CODE END RTC_Init 2 */
-
-}
-
-/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -444,34 +376,27 @@ static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 /* USER CODE BEGIN MX_GPIO_Init_1 */
-
-  /*Configure GPIO pin : IMU_INT1_Float_Pin */
-  GPIO_InitStruct.Pin = IMU_INT1_Float_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(IMU_INT1_Float_GPIO_Port, &GPIO_InitStruct);
-  
 /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, Vcom_Sel_Pin|XRST_Pin|ENBS_Pin|SI7_Pin
-                          |SI6_Pin|SI5_Pin|SI4_Pin|DBG_SWO_Pin
-                          |ENBG_Pin, GPIO_PIN_RESET);
+                          |SI6_Pin|SI5_Pin|SI4_Pin|ENBG_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, SI3_Pin|SI2_Pin|SI1_Pin|SI0_Pin
                           |DEN_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : NRST_Pin BOOT0_Pin */
-  GPIO_InitStruct.Pin = NRST_Pin|BOOT0_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  /*Configure GPIO pins : PC13 PC14 PC15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : IMU_INT2_Pin */
   GPIO_InitStruct.Pin = IMU_INT2_Pin;
@@ -479,11 +404,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(IMU_INT2_GPIO_Port, &GPIO_InitStruct);
 
-//   /*Configure GPIO pin : IMU_INT1_Float_Pin */
-//   GPIO_InitStruct.Pin = IMU_INT1_Float_Pin;
-//   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-//   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-//   HAL_GPIO_Init(IMU_INT1_Float_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : IMU_INT1_Float_Pin */
+  GPIO_InitStruct.Pin = IMU_INT1_Float_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(IMU_INT1_Float_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : RTC_INT_Pin */
   GPIO_InitStruct.Pin = RTC_INT_Pin;
@@ -491,24 +416,28 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(RTC_INT_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : PA3 PA4 PA5 DISP_SCLK_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|DISP_SCLK_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PB0 PB2 PB3 PB5
+                           PB6 PB7 PB8 PB9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_5
+                          |GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*Configure GPIO pins : Vcom_Sel_Pin XRST_Pin ENBS_Pin SI7_Pin
-                           SI6_Pin SI5_Pin SI4_Pin DBG_SWO_Pin
-                           ENBG_Pin */
+                           SI6_Pin SI5_Pin SI4_Pin ENBG_Pin */
   GPIO_InitStruct.Pin = Vcom_Sel_Pin|XRST_Pin|ENBS_Pin|SI7_Pin
-                          |SI6_Pin|SI5_Pin|SI4_Pin|DBG_SWO_Pin
-                          |ENBG_Pin;
+                          |SI6_Pin|SI5_Pin|SI4_Pin|ENBG_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : DISP_SCLK_Pin */
-  GPIO_InitStruct.Pin = DISP_SCLK_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF0_SWD;
-  HAL_GPIO_Init(DISP_SCLK_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : SI3_Pin SI2_Pin SI1_Pin SI0_Pin
                            DEN_Pin */
@@ -578,7 +507,9 @@ static void startJob(int job)
 	lsm6dsr_func_cfg_access_t func_cfg_access = {0};
 	switch (job) {
 		case stepJob:
+      __disable_irq();
 			if (stepsInQueue) stepsInQueue--;
+      __enable_irq();
 			func_cfg_access.reg_access = LSM6DSR_EMBEDDED_FUNC_BANK; // Enable standard register bank
 			if (!HAL_I2C_Mem_Write(&hi2c3, LSM6DSR_I2C_ADD_L, LSM6DSR_FUNC_CFG_ACCESS, I2C_MEMADD_SIZE_8BIT, (uint8_t *)&func_cfg_access, 1, 5)) {
 				DMArunning = 1;
@@ -587,7 +518,9 @@ static void startJob(int job)
 			}
 			break;
 		case tapJob:
-			if (tapsInQueue) tapsInQueue--;
+			__disable_irq();
+      if (tapsInQueue) tapsInQueue--;
+      __enable_irq();
 			func_cfg_access.reg_access = LSM6DSR_USER_BANK; // Enable standard register bank
 			if(!HAL_I2C_Mem_Write(&hi2c3, LSM6DSR_I2C_ADD_L, LSM6DSR_FUNC_CFG_ACCESS, I2C_MEMADD_SIZE_8BIT, (uint8_t *)&func_cfg_access, 1, 5)) {
 				DMArunning = 1;
@@ -596,7 +529,9 @@ static void startJob(int job)
 			}
 			break;
 		case timeJob:
+			__disable_irq();
 			if (timeInQueue) timeInQueue--;
+      __enable_irq();
 			uint8_t status;
 			max31331_get_status(&s_max_ctx, &status); // Clears interrupt
 			DMArunning = 1;
@@ -702,34 +637,6 @@ static void clear_I2C_bus(void) {
     HAL_GPIO_DeInit(I2C3_PORT, I2C3_SCL_PIN | I2C3_SDA_PIN); // Return pins to default state
 }
 
-static void reconfigure_interupts(int interrupt_en) {
-	HAL_GPIO_DeInit(GPIOA, IMU_INT2_Pin|IMU_INT1_Pin); // Reset pin configuration
-	
-	GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-	if(interrupt_en) {
-		/*Configure GPIO pins as interrupts : IMU_INT2_Pin IMU_INT1_Pin */
-		GPIO_InitStruct.Pin = IMU_INT2_Pin|IMU_INT1_Pin;
-		GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-		GPIO_InitStruct.Pull = GPIO_NOPULL;
-		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-		/* EXTI interrupt init*/
-		HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
-		HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
-
-		HAL_NVIC_SetPriority(EXTI2_3_IRQn, 0, 0);
-		HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
-	}
-	else { // Configure them as GPIO outputs set to 0
-		GPIO_InitTypeDef GPIO_InitStruct = {0};
-		GPIO_InitStruct.Pin = IMU_INT1_Pin;
-		GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-		GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-	}
-}
-
 static void LSM6DSR_Init(void) {
 	uint8_t rst = 1;
 	uint8_t who = 0;
@@ -794,6 +701,8 @@ static void LSM6DSR_Init_Pedo_INT2(void) {
 	lsm6dsr_xl_full_scale_set(&s_lsm_ctx, LSM6DSR_4g);
 	/* 6.1 Pedometer functions: ODR >= 26Hz for step counter*/
 	lsm6dsr_xl_data_rate_set(&s_lsm_ctx, LSM6DSR_XL_ODR_26Hz);
+	/* Low power mode works @ ODR <= 26Hz*/
+	lsm6dsr_xl_power_mode_set(&s_lsm_ctx, LSM6DSR_LOW_NORMAL_POWER_MD);
 
 	/* Enable pedometer with false-step rejection */
 	lsm6dsr_pedo_sens_set(&s_lsm_ctx, PROPERTY_ENABLE);
@@ -891,14 +800,15 @@ static void MAX31331_Init(void) {
 	max31331_get_date(&s_max_ctx, &day, &date, &month, &century, &year);
 	HAL_Delay(5);
 
-	max31331_set_clko(&s_max_ctx, 1, CLKO_1Hz);
-	HAL_Delay(5);
+	// Enable 1hz clko for display
+	// max31331_set_clko(&s_max_ctx, 1, CLKO_1Hz);
+	// HAL_Delay(5);
 
-	max31331_set_timer_config(&s_max_ctx, 0, 0, 1, TIMER_64Hz); // Disable timer and "resume" to change init
+	max31331_set_timer_config(&s_max_ctx, 0, 0, 1, TIMER_16Hz); // Disable timer and "resume" to change init
 	HAL_Delay(5);
-	max31331_set_timer_init(&s_max_ctx, 2);                    	// Update init to get interrupts every 2 ticks
+	max31331_set_timer_init(&s_max_ctx, 16);                   	// Update init to get interrupts every 16 ticks
 	HAL_Delay(5);
-	max31331_set_timer_config(&s_max_ctx, 1, 0, 1, TIMER_64Hz); // 64hz timer every 2 ticks => 32hz interrupts
+	max31331_set_timer_config(&s_max_ctx, 1, 0, 1, TIMER_16Hz); // 16hz timer every 16 ticks => 1hz interrupt
 	HAL_Delay(5);
 	
 	max31331_set_int_en(&s_max_ctx, 0, 0, 0, 0, 1, 0, 0);      // Enable timer interrupt only
@@ -909,6 +819,82 @@ static void MAX31331_Init(void) {
 	uint8_t rtc_status = 0xFF;
 	max31331_get_status(&s_max_ctx, &rtc_status);
 	HAL_Delay(5);
+}
+
+/* ============== LP-Run modes ============== */
+void Enter_LowPowerRunMode(void)
+{
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+    // Step 1: Switch to MSI
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
+    RCC_OscInitStruct.MSIState = RCC_MSI_ON;
+    RCC_OscInitStruct.MSICalibrationValue = 0;
+    RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_4;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+        Error_Handler();
+    }
+
+    RCC_ClkInitStruct.ClockType      = RCC_CLOCKTYPE_HCLK |
+                                       RCC_CLOCKTYPE_SYSCLK |
+                                       RCC_CLOCKTYPE_PCLK1;
+    RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_MSI;
+    RCC_ClkInitStruct.AHBCLKDivider  = RCC_SYSCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
+        Error_Handler();
+    }
+
+    // Step 2: Enable Low Power Run Mode
+    HAL_PWREx_EnableLowPowerRunMode();
+    inLPRunMode = 1;
+}
+
+void Exit_LowPowerRunMode(void)
+{
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+    uint32_t flashLatency = FLASH_LATENCY_0;
+
+    // Step 1: Disable Low Power Run Mode
+    HAL_PWREx_DisableLowPowerRunMode();
+    inLPRunMode = 0;
+
+    // Step 2: Switch back to HSI 16 MHz
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+        Error_Handler();
+    }
+
+    // Decide FLASH latency based on current VOS
+    switch (HAL_PWREx_GetVoltageRange()) {
+        case PWR_REGULATOR_VOLTAGE_SCALE1:  
+            flashLatency = FLASH_LATENCY_0;  // up to 16 MHz
+            break;
+        case PWR_REGULATOR_VOLTAGE_SCALE2:  
+            flashLatency = FLASH_LATENCY_1;  // 16 MHz needs 1 WS
+            break;
+        default: 
+            Error_Handler();  // not valid for 16 MHz
+            break;
+    }
+
+    // Switch SYSCLK back to HSI
+    RCC_ClkInitStruct.ClockType      = RCC_CLOCKTYPE_HCLK |
+                                       RCC_CLOCKTYPE_SYSCLK |
+                                       RCC_CLOCKTYPE_PCLK1;
+    RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_HSI;
+    RCC_ClkInitStruct.AHBCLKDivider  = RCC_SYSCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, flashLatency) != HAL_OK) {
+        Error_Handler();
+    }
 }
 
 /* ============== EXTI IRQ Handler ============== */
@@ -942,7 +928,6 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
 	if(hi2c == &hi2c3) {
-		// Step counter DMA finished
 		if (TickDMAflag) {
 			TickDMAflag = 0;
 			TickRXcomp = 1;
@@ -953,7 +938,7 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 			StepDMAflag = 0;
 			StepRXcomp = 1;
 		}
-    }
+  }
 	DMArunning = 0;
 }
 
